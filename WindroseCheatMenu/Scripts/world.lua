@@ -104,19 +104,90 @@ local function apply_field_map(container, state)
 end
 
 W.apply_free_build = function(state)
-    local bs = find_build_settings_any()
-    if not bs then return false end
-    local n_inst = apply_field_map(bs, state)
-    local n_cdo = 0
-    pcall(function()
-        for _, cls in ipairs(W.BUILD_SETTINGS_CANDIDATES) do
-            local cdo = StaticFindObject(string.format("/Script/R5.Default__%s", cls))
-            if cdo and cdo:IsValid() then
-                n_cdo = n_cdo + apply_field_map(cdo, state)
+    -- Legacy path retained for diagnostic-only purposes; the real apply
+    -- lives in apply_free_build_per_item, which writes gameplay attributes
+    -- on each R5BuildingItem (the actual gate per `wcm probe R5BuildingItem`).
+    return W.apply_free_build_per_item(state)
+end
+
+-- ----- Per-item free-build (the real implementation) -------------------
+-- The R5BuildingItem class (862 instances in this build) carries each
+-- buildable's resource-cost gating as gameplay-attribute UObjects, not
+-- direct bool fields. attrs.write_attr handles BaseValue/CurrentValue
+-- writes and snapshots originals so toggle-off cleanly restores.
+
+-- attr name -> target numeric value when free_build is ON
+-- (0 disables a "require/validate" check; 1 enables a "skip/free/unlimited" override)
+W.FREE_BUILD_ATTR_TARGETS = {
+    bConsumeResources             = 0,
+    bResourceValidation           = 0,
+    bBuildingResourcesValidation  = 0,
+    bRequireResources             = 0,
+    bSkipResourceCheck            = 1,
+    bFreeBuild                    = 1,
+    bUnlimitedResources           = 1,
+    bSkipBuildingCenterValidation = 1,
+}
+
+local last_free_build_state  = nil  -- nil until first apply; then true/false
+local free_build_diag_logged = false
+
+local function free_build_diagnostic(item)
+    log("free_build first-apply diagnostic:")
+    pcall(function() log("  item: " .. tostring(item:GetFullName())) end)
+    for attr_name in pairs(W.FREE_BUILD_ATTR_TARGETS) do
+        local attr = A.get_field(item, attr_name)
+        local t = type(attr)
+        log(string.format("  .%s type=%s", attr_name, t))
+        if t == "userdata" or t == "table" then
+            pcall(function() log(string.format("      .BaseValue    = %s", tostring(attr.BaseValue))) end)
+            pcall(function() log(string.format("      .CurrentValue = %s", tostring(attr.CurrentValue))) end)
+            pcall(function() log(string.format("      class         = %s", tostring(attr:GetClass():GetFullName()))) end)
+        else
+            log(string.format("      value = %s", tostring(attr)))
+        end
+    end
+end
+
+W.apply_free_build_per_item = function(state)
+    -- Idempotent: no-op if state hasn't changed since last apply.
+    if last_free_build_state == state then return true end
+
+    if not cached_build_items or #cached_build_items == 0 then
+        refresh_build_items()
+    end
+    if not cached_build_items or #cached_build_items == 0 then
+        log("apply_free_build: no R5BuildingItem instances cached")
+        return false
+    end
+
+    if state == true then
+        if not free_build_diag_logged then
+            free_build_diag_logged = true
+            local first = cached_build_items[1]
+            if A.is_valid(first) then pcall(function() free_build_diagnostic(first) end) end
+        end
+
+        local writes = 0
+        for i = 1, #cached_build_items do
+            local bi = cached_build_items[i]
+            if A.is_valid(bi) then
+                for attr_name, target in pairs(W.FREE_BUILD_ATTR_TARGETS) do
+                    if A.write_attr(bi, "free_build", attr_name, target) then
+                        writes = writes + 1
+                    end
+                end
             end
         end
-    end)
-    return (n_inst + n_cdo) > 0
+        log(string.format("free_build ON: wrote %d attrs across %d items",
+            writes, #cached_build_items))
+    else
+        local n = A.restore_flag("free_build")
+        log(string.format("free_build OFF: restored %d original attrs", n))
+    end
+
+    last_free_build_state = state
+    return true
 end
 
 -- Probe an arbitrary UE class by name. Logs instance count + first
