@@ -38,6 +38,35 @@ end
 
 local function imgui_available() return type(ImGui) == "table" end
 
+-- One-shot diagnostic: log what ImGui surface and APIs we actually have.
+local diagnostics_logged = false
+local function log_diagnostics_once()
+    if diagnostics_logged then return end
+    diagnostics_logged = true
+    log("=== runtime diagnostics ===")
+    log("  ImGui global type        = " .. type(ImGui))
+    log("  LoopAsync type           = " .. type(LoopAsync))
+    log("  ExecuteInGameThread type = " .. type(ExecuteInGameThread))
+    log("  RegisterCustomEvent type = " .. type(RegisterCustomEvent))
+    -- Look for tab/event registration APIs that vary by UE4SS build
+    for _, name in ipairs({
+        "RegisterImGuiCustomTab", "RegisterImGuiTab", "RegisterImGuiCallback",
+        "RegisterTab", "RegisterDrawCallback", "ImGuiAPI",
+    }) do
+        log(string.format("  %s type = %s", name, type(rawget(_G, name))))
+    end
+    if type(ImGui) == "table" then
+        log("  ImGui table keys (first 20):")
+        local i = 0
+        for k, _ in pairs(ImGui) do
+            i = i + 1
+            if i > 20 then break end
+            log("    " .. tostring(k))
+        end
+    end
+    log("=== end diagnostics ===")
+end
+
 local function checkbox(label, flag_name)
     local current = flag_read(flag_name, false)
     local changed, new_value = ImGui.Checkbox(label, current)
@@ -52,8 +81,15 @@ end
 -- ----- Draw --------------------------------------------------------------
 
 local function draw_window()
+    log_diagnostics_once()
     if not visible then return end
-    if not imgui_available() then return end
+    if not imgui_available() then
+        if not _G.WindroseCheatMenu_warned_no_imgui then
+            _G.WindroseCheatMenu_warned_no_imgui = true
+            log("ImGui not available — menu cannot render. Set GuiConsoleEnabled=1 in UE4SS-settings.ini.")
+        end
+        return
+    end
 
     local cond_first = (ImGui.Cond and ImGui.Cond.FirstUseEver) or 4
     if ImGui.SetNextWindowSize then
