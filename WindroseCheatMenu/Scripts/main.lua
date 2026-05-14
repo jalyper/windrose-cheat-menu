@@ -40,9 +40,11 @@ _G.WindroseCheatMenuConfig = _G.WindroseCheatMenuConfig or {
 
 local gui_ok,     gui     = pcall(require, "gui")
 local runtime_ok, runtime = pcall(require, "runtime")
+local console_ok, console = pcall(require, "console")
 
 if not gui_ok     then log("failed to load gui.lua: "     .. tostring(gui))     end
 if not runtime_ok then log("failed to load runtime.lua: " .. tostring(runtime)) end
+if not console_ok then log("failed to load console.lua: " .. tostring(console)) end
 
 -- ----- Public API --------------------------------------------------------
 
@@ -113,7 +115,8 @@ end
 
 if gui_ok     and gui.init     then pcall(gui.init)     end
 if runtime_ok and runtime.init then pcall(runtime.init) end
+if console_ok and console.init then pcall(console.init) end
 
 register_menu_hotkey()
 
-log(string.format("loader online (v%s) — press F8 to open menu", MOD_VERSION))
+log(string.format("loader online (v%s) — type 'wcm' in F10 console for cheats", MOD_VERSION))
