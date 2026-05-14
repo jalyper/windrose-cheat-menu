@@ -129,6 +129,8 @@ local function cmd_help(ar)
     writeline(ar, "  wcm apply                        - force one apply pass")
     writeline(ar, "  wcm rescan                       - clear cached player/ship refs")
     writeline(ar, "  wcm dump                         - log inventory class candidates")
+    writeline(ar, "  wcm probe <ClassName>            - log instance count + first object fields")
+    writeline(ar, "  wcm setfield <Class> <field> on/off - try writing one boolean field directly")
     writeline(ar, "")
     writeline(ar, "Flag aliases: health, stamina, defense, armor, damage,")
     writeline(ar, "  invincible, cannon, freebuild, unlock, inventory")
@@ -210,6 +212,47 @@ local function cmd_dump(ar)
     end
 end
 
+local function cmd_probe(ar, class_name)
+    if not class_name or class_name == "" then
+        writeline(ar, "Usage: wcm probe <ClassName>  (e.g. wcm probe R5BuildingSettings)")
+        return
+    end
+    if _G.WindroseCheatMenu and _G.WindroseCheatMenu.Probe then
+        local n = _G.WindroseCheatMenu.Probe(class_name)
+        writeline(ar, string.format("probed '%s' -> %d instances (details in UE4SS.log)",
+            class_name, tonumber(n) or 0))
+    else
+        writeline(ar, "Probe unavailable")
+    end
+end
+
+local function parse_bool(token)
+    if not token then return nil end
+    token = tostring(token):lower()
+    if token == "true" or token == "on" or token == "1" then return true end
+    if token == "false" or token == "off" or token == "0" then return false end
+    return nil
+end
+
+local function cmd_setfield(ar, class_name, field, value_token)
+    if not class_name or not field or not value_token then
+        writeline(ar, "Usage: wcm setfield <ClassName> <field> <true|false>")
+        return
+    end
+    local value = parse_bool(value_token)
+    if value == nil then
+        writeline(ar, "Value must be true|false|on|off|1|0")
+        return
+    end
+    if _G.WindroseCheatMenu and _G.WindroseCheatMenu.SetField then
+        local ok = _G.WindroseCheatMenu.SetField(class_name, field, value)
+        writeline(ar, string.format("setfield %s.%s = %s -> ok=%s (details in UE4SS.log)",
+            class_name, field, tostring(value), tostring(ok)))
+    else
+        writeline(ar, "SetField unavailable")
+    end
+end
+
 -- ----- Main dispatcher --------------------------------------------------
 
 local function handle(full_command, parameters, ar)
@@ -226,6 +269,11 @@ local function handle(full_command, parameters, ar)
     if arg1 == "apply"                      then cmd_apply(ar);  return true end
     if arg1 == "rescan"                     then cmd_rescan(ar); return true end
     if arg1 == "dump"                       then cmd_dump(ar);   return true end
+    if arg1 == "probe"                      then cmd_probe(ar, parameters[2]); return true end
+    if arg1 == "setfield" then
+        cmd_setfield(ar, parameters[2], parameters[3], parameters[4])
+        return true
+    end
 
     -- Bulk groups
     if arg1 == "player" or arg1 == "ship" or arg1 == "building" or arg1 == "all" then

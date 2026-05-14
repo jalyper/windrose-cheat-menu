@@ -156,6 +156,14 @@ M.dump_inventory = function()
     return world.dump_inventory()
 end
 
+M.probe_class = function(name)
+    return world.probe_class(name)
+end
+
+M.set_field_on_class = function(cls, field, value)
+    return world.set_field_on_class(cls, field, value)
+end
+
 M.init = function()
     if type(LoopAsync) ~= "function" then
         log("LoopAsync unavailable — runtime cannot tick")

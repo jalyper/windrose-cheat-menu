@@ -23,36 +23,149 @@ end
 
 -- ----- Free build -------------------------------------------------------
 
-local function find_build_settings()
+-- Class-name candidates for build-cost gating. The first one with live
+-- instances wins. Add more here as we discover them via `wcm probe`.
+W.BUILD_SETTINGS_CANDIDATES = {
+    "R5BuildingSettings",
+    "R5BuildSettings",
+    "R5BuildingSystemSettings",
+    "R5BuildingConfig",
+    "R5BuildingManager",
+    "R5BuildSystemConfig",
+    "R5BuildController",
+    "R5BuildingPlacer",
+    "R5BuildSystem",
+}
+
+-- Field-name candidates we'll toggle on whichever class is live.
+-- When state=true (cheats ON), the *Validation flags should be false (skip checks).
+W.BUILD_FIELD_MAP = {
+    bBuildingResourcesValidation     = false,  -- inverted (set to false when free_build=on)
+    bSkipBuildingCenterValidation    = true,   -- direct
+    bRequireResources                = false,
+    bConsumeResources                = false,
+    bResourceValidation              = false,
+    bSkipResourceCheck               = true,
+    bFreeBuild                       = true,
+    bUnlimitedResources              = true,
+}
+
+local first_probe_done = false
+
+local function find_build_settings_any()
     if A.is_valid(cached_build_settings) then return cached_build_settings end
     cached_build_settings = nil
-    local ok, all = pcall(FindAllOf, "R5BuildingSettings")
-    if ok and type(all) == "table" then
-        for i = 1, #all do
-            if A.is_valid(all[i]) then
-                cached_build_settings = all[i]
-                return cached_build_settings
+    for _, cls in ipairs(W.BUILD_SETTINGS_CANDIDATES) do
+        local ok, all = pcall(FindAllOf, cls)
+        if ok and type(all) == "table" then
+            for i = 1, #all do
+                if A.is_valid(all[i]) then
+                    if not first_probe_done then
+                        first_probe_done = true
+                        log(string.format("find_build_settings: matched class '%s' (instance count=%d)",
+                            cls, #all))
+                        pcall(function()
+                            log("  first instance full name: " .. tostring(all[i]:GetFullName()))
+                        end)
+                    end
+                    cached_build_settings = all[i]
+                    return cached_build_settings
+                end
             end
         end
+    end
+    if not first_probe_done then
+        first_probe_done = true
+        log("find_build_settings: no instances found for any candidate class. " ..
+            "Run 'wcm probe <ClassName>' to test alternates.")
+        log("  candidates tried: " .. table.concat(W.BUILD_SETTINGS_CANDIDATES, ", "))
     end
     return nil
 end
 
+local function apply_field_map(container, state)
+    if not A.is_valid(container) then return 0 end
+    local touched = 0
+    for field, direct in pairs(W.BUILD_FIELD_MAP) do
+        pcall(function()
+            local current = container[field]
+            if current == nil then return end -- field doesn't exist on this class
+            local target
+            if direct then
+                target = state
+            else
+                target = not state
+            end
+            container[field] = target
+            touched = touched + 1
+        end)
+    end
+    return touched
+end
+
 W.apply_free_build = function(state)
-    local bs = find_build_settings()
+    local bs = find_build_settings_any()
     if not bs then return false end
+    local n_inst = apply_field_map(bs, state)
+    local n_cdo = 0
     pcall(function()
-        bs.bBuildingResourcesValidation  = not state
-        bs.bSkipBuildingCenterValidation = state
-    end)
-    pcall(function()
-        local cdo = StaticFindObject("/Script/R5.Default__R5BuildingSettings")
-        if cdo and cdo:IsValid() then
-            cdo.bBuildingResourcesValidation  = not state
-            cdo.bSkipBuildingCenterValidation = state
+        for _, cls in ipairs(W.BUILD_SETTINGS_CANDIDATES) do
+            local cdo = StaticFindObject(string.format("/Script/R5.Default__%s", cls))
+            if cdo and cdo:IsValid() then
+                n_cdo = n_cdo + apply_field_map(cdo, state)
+            end
         end
     end)
-    return true
+    return (n_inst + n_cdo) > 0
+end
+
+-- Probe an arbitrary UE class by name. Logs instance count + first
+-- instance's full name + boolean field values. Returns the count.
+W.probe_class = function(cls_name)
+    local ok, all = pcall(FindAllOf, cls_name)
+    if not ok or type(all) ~= "table" then
+        log(string.format("probe '%s': FindAllOf failed or returned non-table", cls_name))
+        return 0
+    end
+    local n = #all
+    log(string.format("probe '%s': %d instances", cls_name, n))
+    for i = 1, math.min(n, 3) do
+        local obj = all[i]
+        if A.is_valid(obj) then
+            pcall(function() log("  [" .. i .. "] " .. tostring(obj:GetFullName())) end)
+            -- List all known fields with their current values
+            for field, _ in pairs(W.BUILD_FIELD_MAP) do
+                pcall(function()
+                    local v = obj[field]
+                    if v ~= nil then
+                        log(string.format("        .%s = %s", field, tostring(v)))
+                    end
+                end)
+            end
+        end
+    end
+    return n
+end
+
+-- Try setting a single field on the first instance of a class.
+W.set_field_on_class = function(cls_name, field, value)
+    local ok, all = pcall(FindAllOf, cls_name)
+    if not ok or type(all) ~= "table" or #all == 0 then
+        log(string.format("set_field: no instances of %s", cls_name))
+        return false
+    end
+    for i = 1, #all do
+        local obj = all[i]
+        if A.is_valid(obj) then
+            local was = nil
+            pcall(function() was = obj[field] end)
+            local ok2 = pcall(function() obj[field] = value end)
+            log(string.format("set_field %s.%s: was=%s set=%s ok=%s",
+                cls_name, field, tostring(was), tostring(value), tostring(ok2)))
+            return ok2
+        end
+    end
+    return false
 end
 
 -- ----- Unlock all build items -------------------------------------------

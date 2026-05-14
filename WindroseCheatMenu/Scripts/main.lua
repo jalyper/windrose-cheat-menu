@@ -88,6 +88,18 @@ _G.WindroseCheatMenu.DumpInventory = function()
     if runtime_ok and runtime.dump_inventory then return runtime.dump_inventory() end
 end
 
+_G.WindroseCheatMenu.Probe = function(class_name)
+    if runtime_ok and runtime.probe_class then return runtime.probe_class(class_name) end
+    return 0
+end
+
+_G.WindroseCheatMenu.SetField = function(class_name, field, value)
+    if runtime_ok and runtime.set_field_on_class then
+        return runtime.set_field_on_class(class_name, field, value)
+    end
+    return false
+end
+
 -- ----- Hotkey ------------------------------------------------------------
 
 local function register_menu_hotkey()
