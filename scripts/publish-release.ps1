@@ -86,13 +86,23 @@ try {
     }
 
     # ---- Create or update the release ----------------------------------
-    $existing = & gh release view $tag --json url 2>$null
-    if ($LASTEXITCODE -eq 0 -and $existing) {
+    # Note: PowerShell 5.1 wraps stderr from native commands in ErrorRecords
+    # when redirected with `2>$null`, which would fail this script even though
+    # `gh release view` exits 0 when the release exists. Use exit code only
+    # and discard stderr via a temp file.
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $existing = & gh release view $tag --json url 2>$stderrFile
+        $existsExit = $LASTEXITCODE
+    } finally {
+        Remove-Item $stderrFile -ErrorAction SilentlyContinue
+    }
+
+    if ($existsExit -eq 0 -and $existing) {
         Write-Host "==> Release $tag already exists; uploading asset (clobber)"
         & gh release upload $tag $zipPath --clobber
     } else {
         Write-Host "==> Creating release $tag"
-        $draftFlag = if ($Draft) { "--draft" } else { "" }
         $argsList = @(
             "release", "create", $tag, $zipPath,
             "--title", "$tag",
