@@ -113,9 +113,19 @@ windrose-cheat-menu/
 
 ## Building a release
 
+Manual:
 ```powershell
 cd C:\Users\keato\repos\windrose-cheat-menu
 Compress-Archive -Path WindroseCheatMenu -DestinationPath dist\WindroseCheatMenu-0.1.0.zip -Force
+```
+
+Or use the helper that also publishes the GitHub Release:
+```powershell
+# one-time
+gh auth login
+
+# every release (builds zip if missing, creates the Release, attaches zip)
+.\scripts\publish-release.ps1 -Version 0.1.0
 ```
 
 The release zip should contain a single top-level `WindroseCheatMenu/` folder — that's what users drop into `<game>\R5\Binaries\Win64\ue4ss\Mods\`.
