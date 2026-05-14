@@ -96,7 +96,7 @@ Inspired by [url=https://www.nexusmods.com/windrose/mods/171]Windrose Cheat Suit
 
 Built on [url=https://github.com/UE4SS-RE/RE-UE4SS]UE4SS[/url] by the UE4SS contributors.
 
-Source on GitHub: [url=https://github.com/jalyper/windrose-cheat-menu]jalyper/windrose-cheat-menu[/url] (update link after pushing)
+Source on GitHub: [url=https://github.com/jalyper/windrose-cheat-menu]jalyper/windrose-cheat-menu[/url]
 
 [size=4]License[/size]
 
