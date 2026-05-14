@@ -21,6 +21,12 @@ local function log(msg)
     print(string.format("[WindroseCheatMenu:world] %s\n", tostring(msg)))
 end
 
+-- Forward declaration so apply_free_build_per_item (defined earlier in the
+-- file) can call refresh_build_items (defined later). Lua resolves locals
+-- by lexical scope at compile time; without this, the name is treated as
+-- a global and resolves to nil at call time.
+local refresh_build_items
+
 -- ----- Free build -------------------------------------------------------
 
 -- Class-name candidates for build-cost gating. The first one with live
@@ -241,7 +247,7 @@ end
 
 -- ----- Unlock all build items -------------------------------------------
 
-local function refresh_build_items()
+refresh_build_items = function()
     local ok, all = pcall(FindAllOf, "R5BuildingItem")
     if ok and type(all) == "table" then
         cached_build_items = all
