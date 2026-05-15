@@ -48,6 +48,17 @@ local function snap_for(container, flag)
     return snapshots[key].flags[flag]
 end
 
+-- Many UE properties typed as `UObject*` have a stable Lua wrapper even
+-- when their inner pointer is null. tostring(wrapper) returns an address
+-- (so they look "non-nil"), but dereferencing fields on them produces a
+-- UE4SS [Lua][Error] BEFORE pcall can catch it. At 862 items * 8 fields
+-- this floods the log into game-freezing volumes, so we must IsValid()
+-- gate every nested-object access.
+local function uobject_inner_valid(attr)
+    local ok, valid = pcall(function() return attr.IsValid and attr:IsValid() end)
+    return ok and valid == true
+end
+
 A.snapshot_attr = function(container, flag, attr_name)
     local snap = snap_for(container, flag)
     if snap[attr_name] ~= nil then return end -- already captured
@@ -60,6 +71,9 @@ A.snapshot_attr = function(container, flag, attr_name)
         return
     end
 
+    -- Null UObject wrapper — skip; we can't read BaseValue/CurrentValue.
+    if not uobject_inner_valid(attr) then return end
+
     snap[attr_name] = {
         direct  = false,
         base    = A.get_field(attr, "BaseValue"),
@@ -69,15 +83,18 @@ end
 
 A.write_attr = function(container, flag, attr_name, value)
     if not A.is_valid(container) then return false end
-    A.snapshot_attr(container, flag, attr_name)
     local attr = A.get_field(container, attr_name)
     if attr == nil then return false end
 
     local t = type(attr)
     if t == "table" or t == "userdata" then
+        -- Bail on null inner UObject before any access fires UE4SS errors.
+        if not uobject_inner_valid(attr) then return false end
+        A.snapshot_attr(container, flag, attr_name)
         pcall(function() attr.BaseValue    = value end)
         pcall(function() attr.CurrentValue = value end)
     else
+        A.snapshot_attr(container, flag, attr_name)
         A.set_field(container, attr_name, value)
     end
     return true

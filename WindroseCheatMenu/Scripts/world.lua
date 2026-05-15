@@ -138,21 +138,60 @@ W.FREE_BUILD_ATTR_TARGETS = {
 local last_free_build_state  = nil  -- nil until first apply; then true/false
 local free_build_diag_logged = false
 
+local function attr_is_valid(attr)
+    if attr == nil then return false end
+    local t = type(attr)
+    if t ~= "userdata" and t ~= "table" then return true end -- primitive
+    local ok, valid = pcall(function() return attr.IsValid and attr:IsValid() end)
+    return ok and valid == true
+end
+
 local function free_build_diagnostic(item)
     log("free_build first-apply diagnostic:")
     pcall(function() log("  item: " .. tostring(item:GetFullName())) end)
     for attr_name in pairs(W.FREE_BUILD_ATTR_TARGETS) do
         local attr = A.get_field(item, attr_name)
         local t = type(attr)
-        log(string.format("  .%s type=%s", attr_name, t))
-        if t == "userdata" or t == "table" then
+        local valid = attr_is_valid(attr)
+        log(string.format("  .%s type=%s valid=%s", attr_name, t, tostring(valid)))
+        if valid and (t == "userdata" or t == "table") then
             pcall(function() log(string.format("      .BaseValue    = %s", tostring(attr.BaseValue))) end)
             pcall(function() log(string.format("      .CurrentValue = %s", tostring(attr.CurrentValue))) end)
             pcall(function() log(string.format("      class         = %s", tostring(attr:GetClass():GetFullName()))) end)
-        else
+        elseif not valid and (t == "userdata" or t == "table") then
+            log("      (null UObject wrapper — inner pointer is nullptr)")
+        elseif t ~= "userdata" and t ~= "table" then
             log(string.format("      value = %s", tostring(attr)))
         end
     end
+end
+
+-- Probe how many items have at least one valid (non-null) attribute object.
+-- Result is logged once. Returns a summary table.
+local function survey_attr_validity(items)
+    local per_attr = {}
+    for attr_name in pairs(W.FREE_BUILD_ATTR_TARGETS) do per_attr[attr_name] = 0 end
+    local items_with_any_valid = 0
+    for i = 1, #items do
+        local bi = items[i]
+        if A.is_valid(bi) then
+            local any_valid = false
+            for attr_name in pairs(W.FREE_BUILD_ATTR_TARGETS) do
+                local attr = A.get_field(bi, attr_name)
+                if attr_is_valid(attr) then
+                    per_attr[attr_name] = per_attr[attr_name] + 1
+                    any_valid = true
+                end
+            end
+            if any_valid then items_with_any_valid = items_with_any_valid + 1 end
+        end
+    end
+    log(string.format("free_build attr-validity survey: %d/%d items have >=1 valid attr",
+        items_with_any_valid, #items))
+    for attr_name, count in pairs(per_attr) do
+        log(string.format("  .%s valid on %d items", attr_name, count))
+    end
+    return { items_total = #items, items_with_any = items_with_any_valid, per_attr = per_attr }
 end
 
 W.apply_free_build_per_item = function(state)
@@ -172,6 +211,7 @@ W.apply_free_build_per_item = function(state)
             free_build_diag_logged = true
             local first = cached_build_items[1]
             if A.is_valid(first) then pcall(function() free_build_diagnostic(first) end) end
+            pcall(function() survey_attr_validity(cached_build_items) end)
         end
 
         local writes = 0
