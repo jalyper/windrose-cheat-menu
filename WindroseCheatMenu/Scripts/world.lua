@@ -117,82 +117,25 @@ W.apply_free_build = function(state)
 end
 
 -- ----- Per-item free-build (the real implementation) -------------------
--- The R5BuildingItem class (862 instances in this build) carries each
--- buildable's resource-cost gating as gameplay-attribute UObjects, not
--- direct bool fields. attrs.write_attr handles BaseValue/CurrentValue
--- writes and snapshots originals so toggle-off cleanly restores.
+-- Discovered via `dump_object R5BuildingItem`: the real gating fields on
+-- this class are plain BoolPropertys. Setting bRequiresBuildingCenter=false
+-- removes the "must be near a building center" placement check on every
+-- buildable, which is the "build anywhere" half of "free build".
+--
+-- Resource-cost-free is gated separately: BuildingCost is a
+-- SoftObjectProperty referencing a sibling data asset, and the UI uses
+-- the same reference to decide what to display in the build menu (so
+-- nulling it removes items from the menu rather than zeroing cost).
+-- True cost-free likely requires hooking the placement-validation
+-- UFUNCTION on the player's build component — that's a v0.2 problem.
 
--- attr name -> target numeric value when free_build is ON
--- (0 disables a "require/validate" check; 1 enables a "skip/free/unlimited" override)
-W.FREE_BUILD_ATTR_TARGETS = {
-    bConsumeResources             = 0,
-    bResourceValidation           = 0,
-    bBuildingResourcesValidation  = 0,
-    bRequireResources             = 0,
-    bSkipResourceCheck            = 1,
-    bFreeBuild                    = 1,
-    bUnlimitedResources           = 1,
-    bSkipBuildingCenterValidation = 1,
+W.FREE_BUILD_BOOL_FIELDS = {
+    -- "Cheats ON" target values. attrs.write_attr snapshots originals so
+    -- toggle-off restores cleanly.
+    bRequiresBuildingCenter = false,
 }
 
-local last_free_build_state  = nil  -- nil until first apply; then true/false
-local free_build_diag_logged = false
-
-local function attr_is_valid(attr)
-    if attr == nil then return false end
-    local t = type(attr)
-    if t ~= "userdata" and t ~= "table" then return true end -- primitive
-    local ok, valid = pcall(function() return attr.IsValid and attr:IsValid() end)
-    return ok and valid == true
-end
-
-local function free_build_diagnostic(item)
-    log("free_build first-apply diagnostic:")
-    pcall(function() log("  item: " .. tostring(item:GetFullName())) end)
-    for attr_name in pairs(W.FREE_BUILD_ATTR_TARGETS) do
-        local attr = A.get_field(item, attr_name)
-        local t = type(attr)
-        local valid = attr_is_valid(attr)
-        log(string.format("  .%s type=%s valid=%s", attr_name, t, tostring(valid)))
-        if valid and (t == "userdata" or t == "table") then
-            pcall(function() log(string.format("      .BaseValue    = %s", tostring(attr.BaseValue))) end)
-            pcall(function() log(string.format("      .CurrentValue = %s", tostring(attr.CurrentValue))) end)
-            pcall(function() log(string.format("      class         = %s", tostring(attr:GetClass():GetFullName()))) end)
-        elseif not valid and (t == "userdata" or t == "table") then
-            log("      (null UObject wrapper — inner pointer is nullptr)")
-        elseif t ~= "userdata" and t ~= "table" then
-            log(string.format("      value = %s", tostring(attr)))
-        end
-    end
-end
-
--- Probe how many items have at least one valid (non-null) attribute object.
--- Result is logged once. Returns a summary table.
-local function survey_attr_validity(items)
-    local per_attr = {}
-    for attr_name in pairs(W.FREE_BUILD_ATTR_TARGETS) do per_attr[attr_name] = 0 end
-    local items_with_any_valid = 0
-    for i = 1, #items do
-        local bi = items[i]
-        if A.is_valid(bi) then
-            local any_valid = false
-            for attr_name in pairs(W.FREE_BUILD_ATTR_TARGETS) do
-                local attr = A.get_field(bi, attr_name)
-                if attr_is_valid(attr) then
-                    per_attr[attr_name] = per_attr[attr_name] + 1
-                    any_valid = true
-                end
-            end
-            if any_valid then items_with_any_valid = items_with_any_valid + 1 end
-        end
-    end
-    log(string.format("free_build attr-validity survey: %d/%d items have >=1 valid attr",
-        items_with_any_valid, #items))
-    for attr_name, count in pairs(per_attr) do
-        log(string.format("  .%s valid on %d items", attr_name, count))
-    end
-    return { items_total = #items, items_with_any = items_with_any_valid, per_attr = per_attr }
-end
+local last_free_build_state = nil  -- nil until first apply; then true/false
 
 W.apply_free_build_per_item = function(state)
     -- Idempotent: no-op if state hasn't changed since last apply.
@@ -207,29 +150,22 @@ W.apply_free_build_per_item = function(state)
     end
 
     if state == true then
-        if not free_build_diag_logged then
-            free_build_diag_logged = true
-            local first = cached_build_items[1]
-            if A.is_valid(first) then pcall(function() free_build_diagnostic(first) end) end
-            pcall(function() survey_attr_validity(cached_build_items) end)
-        end
-
         local writes = 0
         for i = 1, #cached_build_items do
             local bi = cached_build_items[i]
             if A.is_valid(bi) then
-                for attr_name, target in pairs(W.FREE_BUILD_ATTR_TARGETS) do
-                    if A.write_attr(bi, "free_build", attr_name, target) then
+                for field, target in pairs(W.FREE_BUILD_BOOL_FIELDS) do
+                    if A.write_attr(bi, "free_build", field, target) then
                         writes = writes + 1
                     end
                 end
             end
         end
-        log(string.format("free_build ON: wrote %d attrs across %d items",
+        log(string.format("free_build ON: wrote %d fields across %d items (build-anywhere mode)",
             writes, #cached_build_items))
     else
         local n = A.restore_flag("free_build")
-        log(string.format("free_build OFF: restored %d original attrs", n))
+        log(string.format("free_build OFF: restored %d originals", n))
     end
 
     last_free_build_state = state

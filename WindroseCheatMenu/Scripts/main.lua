@@ -7,7 +7,7 @@
 -- Requires UE4SS (Latest Experimental recommended). No other mod required.
 
 local MOD_NAME    = "WindroseCheatMenu"
-local MOD_VERSION = "0.1.0"
+local MOD_VERSION = "0.1.1"
 
 local function log(msg)
     print(string.format("[%s] %s\n", MOD_NAME, tostring(msg)))

@@ -17,9 +17,9 @@ Standalone UE4SS mod — no other mod required.
 | Player | Super damage | Attack power, all damage-done types, crit chance + multiplier, armor penetration |
 | Ship | Ship invincible | Hull / sail health, hull armor + cannon damage-taken resist buffed |
 | Ship | Ship cannon boost | Cannon damage-done flat + multiplier buffed |
-| Building | Free build | Disables resource cost validation when placing structures |
-| Building | Unlock all build items | All `R5BuildingItem` entries unlocked regardless of recipe gating |
-| Inventory | Infinite inventory stock | Best-effort: tops up numeric resource counters to 9999 |
+| Building | Free build | "Build anywhere": writes `bRequiresBuildingCenter = false` on every `R5BuildingItem`, removing the must-be-near-a-building-center placement check. Does NOT yet remove resource cost — that's deferred to v0.2 (needs hooking the placement-validation UFUNCTION). |
+| Building | Unlock all build items | All `R5BuildingItem` entries unlocked regardless of recipe gating (via `DrawData.bLockedByRecipe`) |
+| Inventory | Infinite inventory stock | **Diagnostic-only in v0.1.x.** The mod doesn't yet know which UE class actually holds player resource counts in your build. Run `wcm dump` in-game and the `R5InventoryComponent`/similar class names found will be logged — share to help refine v0.2. |
 
 Each flag is independently toggleable and reversible. Toggling a flag off restores the original values it wrote (per-container, per-flag snapshot).
 
@@ -53,11 +53,28 @@ Each flag is independently toggleable and reversible. Toggling a flag off restor
    ```
    This gives the menu an ImGui rendering surface. `GuiConsoleVisible = 0` keeps the UE4SS console window hidden by default; F8 will still toggle the cheat menu.
 4. (Optional) Edit `<Windrose install>\R5\Binaries\Win64\ue4ss\Mods\mods.txt` and add `WindroseCheatMenu : 1` above the `; Built-in keybinds` line.
-5. Launch Windrose via Steam and press **F8** in-game.
+5. Launch Windrose via Steam. Press **F10** in-game to open the UE console, then type `wcm` to see commands.
 
 ## Usage
 
-- **F8** — toggle the cheat menu visibility
+Primary UI is the in-game **F10 console**. Type `wcm` for help. Example session:
+
+```
+wcm status                       show every flag's state
+wcm health on                    enable unlimited_health
+wcm all on                       enable every flag in one line
+wcm freebuild on                 enable "build anywhere" (bRequiresBuildingCenter=false)
+wcm unlock on                    unlock every R5BuildingItem (bypass recipe gating)
+wcm dump                         log inventory class candidates to UE4SS.log
+wcm probe <ClassName>            log first 3 instances + known boolean field values
+wcm setfield <Class> <field> on  write a single boolean field (diagnostic)
+```
+
+Friendly aliases supported: `health`, `stamina`, `defense`, `armor`, `damage`, `invincible`, `cannon`, `freebuild`, `unlock`, `inventory`.
+
+### Hotkey (legacy / future ImGui builds)
+
+- **F8** — toggle the (currently inert) ImGui menu. Will activate automatically on a UE4SS build that exposes ImGui to Lua. Latest Experimental `g06474186` does not, so for now use the F10 `wcm` console instead.
 - **Apply now** button — force an immediate re-application of every active flag (useful after loading a new world)
 - **Re-scan world** button — clear cached player/ship/build references; useful if cheats stop applying after a long session
 - **Dump inventory** button — log every inventory class candidate to `UE4SS.log` for diagnostic purposes (helps refine the infinite-inventory implementation for new game patches)
