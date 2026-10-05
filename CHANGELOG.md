@@ -4,6 +4,25 @@ All notable changes to Windrose Cheat Menu will be documented here. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+**Untested in-game.** Both additions are code-complete but have not been run
+against Windrose yet; verify before the next release.
+
+### Added
+
+- `party_buff` flag (aliases `party`, `mp`, `coop`, `everyone`; also a
+  "Buff all players (host only)" checkbox in `gui.lua`): applies the player
+  flags (`unlimited_health`, `unlimited_stamina`, `super_defense`,
+  `super_armor`, `super_damage`) to every non-bot `R5PlayerCharacter` in the
+  session instead of only the local player. Intended for the host, whose
+  writes should replicate to clients. Turning it off restores the
+  snapshotted values.
+- `wcm dumpfields <ClassName>` (alias `fields`) and the
+  `WindroseCheatMenu.DumpFields` Lua API: reflects every UE property on the
+  first live instance's class hierarchy into `UE4SS.log`, for discovering
+  field names.
+
 ## [0.1.1] — 2026-05-14
 
 UE4SS-build reality check + honest scope.
