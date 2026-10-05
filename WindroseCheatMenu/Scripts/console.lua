@@ -37,9 +37,10 @@ C.PLAYER_FLAGS  = { "unlimited_health", "unlimited_stamina", "super_defense",
                     "super_armor", "super_damage" }
 C.SHIP_FLAGS    = { "ship_invincible", "ship_cannon_boost" }
 C.BUILD_FLAGS   = { "free_build", "unlock_all_items", "infinite_inventory" }
+C.MP_FLAGS      = { "party_buff" }
 
 C.ALL_FLAGS = {}
-for _, t in ipairs({ C.PLAYER_FLAGS, C.SHIP_FLAGS, C.BUILD_FLAGS }) do
+for _, t in ipairs({ C.PLAYER_FLAGS, C.SHIP_FLAGS, C.BUILD_FLAGS, C.MP_FLAGS }) do
     for _, f in ipairs(t) do table.insert(C.ALL_FLAGS, f) end
 end
 
@@ -67,6 +68,11 @@ C.ALIASES = {
     inventory        = "infinite_inventory",
     inv              = "infinite_inventory",
     stock            = "infinite_inventory",
+    party            = "party_buff",
+    party_buff       = "party_buff",
+    mp               = "party_buff",
+    coop             = "party_buff",
+    everyone         = "party_buff",
 }
 
 -- Map a user-typed token to a canonical flag name (or nil if unknown).
@@ -125,15 +131,17 @@ local function cmd_help(ar)
     writeline(ar, "  wcm player on|off                - bulk toggle player flags")
     writeline(ar, "  wcm ship on|off                  - bulk toggle ship flags")
     writeline(ar, "  wcm building on|off              - bulk toggle building+inventory flags")
+    writeline(ar, "  wcm party on|off                 - apply player buffs to ALL players (host only — needs any player flag on too)")
     writeline(ar, "  wcm all on|off                   - bulk toggle every flag")
     writeline(ar, "  wcm apply                        - force one apply pass")
     writeline(ar, "  wcm rescan                       - clear cached player/ship refs")
     writeline(ar, "  wcm dump                         - log inventory class candidates")
     writeline(ar, "  wcm probe <ClassName>            - log instance count + first object fields")
+    writeline(ar, "  wcm dumpfields <ClassName>       - reflect every UE property on the class (for discovery)")
     writeline(ar, "  wcm setfield <Class> <field> on/off - try writing one boolean field directly")
     writeline(ar, "")
     writeline(ar, "Flag aliases: health, stamina, defense, armor, damage,")
-    writeline(ar, "  invincible, cannon, freebuild, unlock, inventory")
+    writeline(ar, "  invincible, cannon, freebuild, unlock, inventory, party")
 end
 
 local function cmd_status(ar)
@@ -148,6 +156,10 @@ local function cmd_status(ar)
     end
     writeline(ar, "  Building & Inventory:")
     for _, f in ipairs(C.BUILD_FLAGS) do
+        writeline(ar, string.format("    [%s] %s", get(f) and "x" or " ", f))
+    end
+    writeline(ar, "  Multiplayer:")
+    for _, f in ipairs(C.MP_FLAGS) do
         writeline(ar, string.format("    [%s] %s", get(f) and "x" or " ", f))
     end
 end
@@ -170,6 +182,7 @@ local function cmd_bulk(ar, group, value)
     if     group == "player"   then list = C.PLAYER_FLAGS
     elseif group == "ship"     then list = C.SHIP_FLAGS
     elseif group == "building" then list = C.BUILD_FLAGS
+    elseif group == "mp"       then list = C.MP_FLAGS
     elseif group == "all"      then list = C.ALL_FLAGS
     end
     if not list then return false end
@@ -234,6 +247,20 @@ local function parse_bool(token)
     return nil
 end
 
+local function cmd_dumpfields(ar, class_name)
+    if not class_name or class_name == "" then
+        writeline(ar, "Usage: wcm dumpfields <ClassName>  (e.g. wcm dumpfields R5AttributeSet)")
+        return
+    end
+    if _G.WindroseCheatMenu and _G.WindroseCheatMenu.DumpFields then
+        local n = _G.WindroseCheatMenu.DumpFields(class_name)
+        writeline(ar, string.format("dumpfields '%s' -> %d properties (full list in UE4SS.log)",
+            class_name, tonumber(n) or 0))
+    else
+        writeline(ar, "DumpFields unavailable")
+    end
+end
+
 local function cmd_setfield(ar, class_name, field, value_token)
     if not class_name or not field or not value_token then
         writeline(ar, "Usage: wcm setfield <ClassName> <field> <true|false>")
@@ -270,13 +297,17 @@ local function handle(full_command, parameters, ar)
     if arg1 == "rescan"                     then cmd_rescan(ar); return true end
     if arg1 == "dump"                       then cmd_dump(ar);   return true end
     if arg1 == "probe"                      then cmd_probe(ar, parameters[2]); return true end
+    if arg1 == "dumpfields" or arg1 == "fields" then
+        cmd_dumpfields(ar, parameters[2])
+        return true
+    end
     if arg1 == "setfield" then
         cmd_setfield(ar, parameters[2], parameters[3], parameters[4])
         return true
     end
 
     -- Bulk groups
-    if arg1 == "player" or arg1 == "ship" or arg1 == "building" or arg1 == "all" then
+    if arg1 == "player" or arg1 == "ship" or arg1 == "building" or arg1 == "mp" or arg1 == "all" then
         if not arg2 then
             writeline(ar, "Need on/off — e.g. 'wcm " .. arg1 .. " on'")
             return true

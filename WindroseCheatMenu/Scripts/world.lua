@@ -200,6 +200,92 @@ W.probe_class = function(cls_name)
     return n
 end
 
+-- Reflective dump: iterate every UE property on the class hierarchy of the
+-- first live instance and log name + type + current value. Use this to
+-- discover unknown field names (e.g. stat/talent points) on classes whose
+-- schema we don't yet have hardcoded in BUILD_FIELD_MAP.
+W.dump_fields = function(cls_name)
+    local ok, all = pcall(FindAllOf, cls_name)
+    if not ok or type(all) ~= "table" or #all == 0 then
+        log(string.format("dump_fields '%s': no instances found", cls_name))
+        return 0
+    end
+
+    local obj
+    for i = 1, #all do
+        if A.is_valid(all[i]) then obj = all[i]; break end
+    end
+    if not obj then
+        log(string.format("dump_fields '%s': %d instances, none valid", cls_name, #all))
+        return 0
+    end
+
+    local full_name = "?"
+    pcall(function() full_name = tostring(obj:GetFullName()) end)
+    log(string.format("dump_fields '%s' (%d instances) — sampling: %s",
+        cls_name, #all, full_name))
+
+    local cls
+    pcall(function() cls = obj:GetClass() end)
+    if not cls then
+        log("  GetClass() returned nil — cannot reflect")
+        return 0
+    end
+
+    local count = 0
+    local seen  = {}
+    local s     = cls
+
+    local function level_name(node)
+        local n
+        pcall(function() n = node:GetFName():ToString() end)
+        return n or "?"
+    end
+
+    while s do
+        log(string.format("  -- properties on %s --", level_name(s)))
+        local ok_iter = pcall(function()
+            s:ForEachProperty(function(prop)
+                local name
+                pcall(function() name = prop:GetFName():ToString() end)
+                if not name or seen[name] then return end
+                seen[name] = true
+                count = count + 1
+
+                local type_name = "?"
+                pcall(function() type_name = prop:GetClass():GetFName():ToString() end)
+
+                local val_str
+                local ok_val, val = pcall(function() return obj[name] end)
+                if ok_val then
+                    if type(val) == "table" or type(val) == "userdata" then
+                        val_str = tostring(val) -- usually "<obj address>"
+                    else
+                        val_str = tostring(val)
+                    end
+                else
+                    val_str = "<read-error>"
+                end
+
+                log(string.format("    .%-44s [%s] = %s", name, type_name, val_str))
+            end)
+        end)
+        if not ok_iter then
+            log("    (ForEachProperty unsupported on this class — UE4SS build may lack it)")
+            break
+        end
+
+        local super
+        pcall(function() super = s:GetSuperStruct() end)
+        if not super or super == s then break end
+        s = super
+    end
+
+    log(string.format("dump_fields '%s': %d unique properties across hierarchy",
+        cls_name, count))
+    return count
+end
+
 -- Try setting a single field on the first instance of a class.
 W.set_field_on_class = function(cls_name, field, value)
     local ok, all = pcall(FindAllOf, cls_name)

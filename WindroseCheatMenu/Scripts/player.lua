@@ -99,6 +99,35 @@ P.find_player = function()
     return (best_score >= 0 and A.is_valid(best)) and best or nil
 end
 
+-- Multiplayer discovery: collect AttributeSets for every valid, non-bot
+-- R5PlayerCharacter in the session. Used by the party_buff flag so the
+-- host can buff every connected client (host is server-authoritative, so
+-- writes here replicate to friends without them needing the mod installed).
+P.find_all_attr_sets = function()
+    if type(FindAllOf) ~= "function" then return {} end
+    local sets = {}
+    local seen = {}
+    for _, cls in ipairs(PLAYER_CLASSES) do
+        local ok, list = pcall(FindAllOf, cls)
+        if ok and type(list) == "table" then
+            for i, p in ipairs(list) do
+                if i > SCAN_LIMIT then break end
+                if A.is_valid(p) and A.get_field(p, "bSpawnAsBot") ~= true then
+                    local a = P.find_attr_set(p)
+                    if A.is_valid(a) then
+                        local key = tostring(a)
+                        if not seen[key] then
+                            seen[key] = true
+                            table.insert(sets, a)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return sets
+end
+
 P.find_attr_set = function(player)
     if not A.is_valid(player) then return nil end
     for _, name in ipairs(ATTR_SET_FIELDS) do

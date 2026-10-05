@@ -31,6 +31,7 @@ local cached_ship_attr      = nil
 local last_player_search    = -999
 local last_ship_search      = -999
 local last_telemetry        = -999
+local party_was_on          = false
 
 -- ----- Flag snapshot ----------------------------------------------------
 
@@ -48,6 +49,7 @@ local function flags()
         free_build         = cfg.free_build         == true,
         unlock_all_items   = cfg.unlock_all_items   == true,
         infinite_inventory = cfg.infinite_inventory == true,
+        party_buff         = cfg.party_buff         == true,
     }
 end
 
@@ -77,16 +79,27 @@ local function tick()
 
     -- Player buffs
     if any_player_flag(f) then
-        if not A.is_valid(cached_player) or not A.is_valid(cached_attr_set) then
-            local interval = (cached_attr_set == nil) and PLAYER_SEARCH_FAST or PLAYER_SEARCH_SLOW
-            if tick_count - last_player_search >= interval then
-                last_player_search = tick_count
-                cached_player     = player.find_player()
-                cached_attr_set   = cached_player and player.find_attr_set(cached_player) or nil
+        if f.party_buff then
+            -- Multiplayer: apply currently-on player flags to every
+            -- R5PlayerCharacter in the session, not just the local one.
+            -- Host is server-authoritative so writes replicate to clients.
+            local sets = player.find_all_attr_sets()
+            for _, attr_set in ipairs(sets) do
+                player.apply(attr_set, f)
             end
-        end
-        if A.is_valid(cached_attr_set) and (tick_count % PLAYER_APPLY_INTERVAL) == 0 then
-            player.apply(cached_attr_set, f)
+        else
+            -- Single-player: cache + buff the local player only.
+            if not A.is_valid(cached_player) or not A.is_valid(cached_attr_set) then
+                local interval = (cached_attr_set == nil) and PLAYER_SEARCH_FAST or PLAYER_SEARCH_SLOW
+                if tick_count - last_player_search >= interval then
+                    last_player_search = tick_count
+                    cached_player     = player.find_player()
+                    cached_attr_set   = cached_player and player.find_attr_set(cached_player) or nil
+                end
+            end
+            if A.is_valid(cached_attr_set) and (tick_count % PLAYER_APPLY_INTERVAL) == 0 then
+                player.apply(cached_attr_set, f)
+            end
         end
     else
         -- If all player flags are off, run a one-time restore.
@@ -96,6 +109,19 @@ local function tick()
         A.restore_flag("super_armor")
         A.restore_flag("super_damage")
     end
+
+    -- Party transition: when party_buff just flipped off (but individual
+    -- player flags may still be on), restore every snapshotted container
+    -- so non-local players revert to their original values. Local player
+    -- briefly drops and gets re-applied on the next tick.
+    if party_was_on and not f.party_buff then
+        A.restore_flag("unlimited_health")
+        A.restore_flag("unlimited_stamina")
+        A.restore_flag("super_defense")
+        A.restore_flag("super_armor")
+        A.restore_flag("super_damage")
+    end
+    party_was_on = f.party_buff
 
     -- Ship buffs
     if any_ship_flag(f) then
@@ -162,6 +188,10 @@ end
 
 M.set_field_on_class = function(cls, field, value)
     return world.set_field_on_class(cls, field, value)
+end
+
+M.dump_fields = function(cls)
+    return world.dump_fields(cls)
 end
 
 M.init = function()

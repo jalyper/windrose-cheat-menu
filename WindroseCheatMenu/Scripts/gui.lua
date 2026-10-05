@@ -121,6 +121,12 @@ local function draw_window()
     checkbox("Unlock all build items",        "unlock_all_items")
     checkbox("Infinite inventory stock",      "infinite_inventory")
 
+    section("Multiplayer")
+    checkbox("Buff all players (host only)",  "party_buff")
+    if ImGui.TextWrapped then
+        ImGui.TextWrapped("Applies player buffs above to every R5PlayerCharacter, not just yours. Only effective when you're the host — your machine is the server, so writes replicate to friends.")
+    end
+
     section("Actions")
     if ImGui.Button("Apply now") then
         if _G.WindroseCheatMenu.Apply then _G.WindroseCheatMenu.Apply() end

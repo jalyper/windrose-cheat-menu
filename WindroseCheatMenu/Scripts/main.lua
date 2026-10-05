@@ -34,6 +34,8 @@ _G.WindroseCheatMenuConfig = _G.WindroseCheatMenuConfig or {
     free_build         = false,
     unlock_all_items   = false,
     infinite_inventory = false,
+    -- Multiplayer
+    party_buff         = false,
 }
 
 -- ----- Module loading ----------------------------------------------------
@@ -98,6 +100,11 @@ _G.WindroseCheatMenu.SetField = function(class_name, field, value)
         return runtime.set_field_on_class(class_name, field, value)
     end
     return false
+end
+
+_G.WindroseCheatMenu.DumpFields = function(class_name)
+    if runtime_ok and runtime.dump_fields then return runtime.dump_fields(class_name) end
+    return 0
 end
 
 -- ----- Hotkey ------------------------------------------------------------
